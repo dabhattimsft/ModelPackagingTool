@@ -3,6 +3,8 @@
 #include <Windows.h>
 #include <sstream>
 #include <regex>
+#include <algorithm>
+#include <wil/resource.h>  // Include WIL resource helpers
 
 bool CertificateManager::GenerateSelfSignedCertificate(
     const fs::path& outputCertPath,
@@ -165,49 +167,85 @@ bool CertificateManager::SignPackage(
 
 fs::path CertificateManager::FindSignToolPath()
 {
-    // Try to locate Windows SDK bin path from registry
-    HKEY hKey;
-    LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                              L"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
-                              0, KEY_READ, &hKey);
+    fs::path signToolPath;
     
-    if (result != ERROR_SUCCESS) {
-        return fs::path();
-    }
-    
-    // Get the installed Windows SDK version
-    wchar_t sdkVersion[256] = { 0 };
-    DWORD bufferSize = sizeof(sdkVersion);
-    DWORD dataType;
-    
-    result = RegQueryValueExW(hKey, L"KitsRoot10", NULL, &dataType,
-                           reinterpret_cast<LPBYTE>(sdkVersion), &bufferSize);
-    
-    RegCloseKey(hKey);
-    
-    if (result != ERROR_SUCCESS || dataType != REG_SZ) {
-        return fs::path();
-    }
-    
-    // Construct the path to the x64 binaries
-    fs::path sdkPath(sdkVersion);
-    fs::path signToolPath = sdkPath / L"bin" / L"10.0.22621.0" / L"x64" / L"signtool.exe";
-    
-    // If the specific version doesn't exist, try finding any version
-    if (!fs::exists(signToolPath)) {
-        fs::path baseSdkPath(sdkVersion);
-        baseSdkPath = baseSdkPath / L"bin";
+    try {
+        // Use standard Windows API for registry access with error handling
+        wil::unique_hkey rootKey;
+        HRESULT hr = RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            L"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
+            0,
+            KEY_READ,
+            &rootKey);
+            
+        if (FAILED(hr)) {
+            std::wcerr << L"Failed to open Windows Kits registry key: 0x" << std::hex << hr << std::endl;
+            return signToolPath;
+        }
         
-        // Try to find any version folder
-        for (const auto& entry : fs::directory_iterator(baseSdkPath)) {
+        // Get the KitsRoot10 value
+        wchar_t kitsRootPath[MAX_PATH] = { 0 };
+        DWORD bufferSize = sizeof(kitsRootPath);
+        DWORD type = 0;
+        
+        hr = RegQueryValueExW(
+            rootKey.get(),
+            L"KitsRoot10",
+            nullptr,
+            &type,
+            reinterpret_cast<LPBYTE>(kitsRootPath),
+            &bufferSize);
+            
+        if (FAILED(hr) || type != REG_SZ) {
+            std::wcerr << L"Failed to get KitsRoot10 value: 0x" << std::hex << hr << std::endl;
+            return signToolPath;
+        }
+        
+        // Find the latest SDK version
+        fs::path binPath = fs::path(kitsRootPath) / L"bin";
+        
+        if (!fs::exists(binPath) || !fs::is_directory(binPath)) {
+            std::wcerr << L"Windows SDK bin path does not exist: " << binPath.wstring() << std::endl;
+            return signToolPath;
+        }
+        
+        // Collect all version directories and sort them to find the latest
+        std::vector<fs::path> versionPaths;
+        for (const auto& entry : fs::directory_iterator(binPath)) {
             if (entry.is_directory()) {
-                fs::path versionPath = entry.path() / L"x64" / L"signtool.exe";
-                if (fs::exists(versionPath)) {
-                    signToolPath = versionPath;
-                    break;
+                // Check if this looks like a version number (10.0.xxxxx.x)
+                std::wstring dirName = entry.path().filename().wstring();
+                if (dirName.find(L"10.0.") == 0) {
+                    versionPaths.push_back(entry.path());
                 }
             }
         }
+        
+        if (versionPaths.empty()) {
+            std::wcerr << L"No Windows SDK versions found in " << binPath.wstring() << std::endl;
+            return signToolPath;
+        }
+        
+        // Sort in descending order to get the latest version first
+        std::sort(versionPaths.begin(), versionPaths.end(), std::greater<fs::path>());
+        
+        // Find the first version that has signtool.exe in the x64 directory
+        for (const auto& verPath : versionPaths) {
+            fs::path toolPath = verPath / L"x64" / L"signtool.exe";
+            if (fs::exists(toolPath)) {
+                signToolPath = toolPath;
+                std::wcout << L"Found SignTool.exe in: " << signToolPath.wstring() << std::endl;
+                break;
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Error finding SignTool.exe path: " << ex.what() << std::endl;
+    }
+    
+    if (signToolPath.empty()) {
+        std::wcerr << L"Could not find SignTool.exe in any Windows SDK installation." << std::endl;
     }
     
     return signToolPath;

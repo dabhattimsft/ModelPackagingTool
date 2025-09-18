@@ -2,6 +2,7 @@
 
 #include <string>
 #include <filesystem>
+#include <wrl.h>
 
 namespace fs = std::filesystem;
 
@@ -42,8 +43,29 @@ private:
     // Find the Windows SDK path
     fs::path FindWindowsSDKPath();
     
-    // Create a zip-based package (fallback method)
+    // Create a fallback package using structured storage API
     bool CreateZipBasedPackage(
         const fs::path& sourceFolder,
         const fs::path& outputMsixPath);
+        
+    // Helper method to add a file to structured storage
+    bool AddFileToStorage(
+        void* storage,
+        const fs::path& sourceFolder,
+        const fs::path& relativePath);
+        
+    // Create MSIX package programmatically using COM interfaces
+    bool CreateMsixPackageProgrammatically(
+        const fs::path& sourceFolder,
+        const fs::path& outputMsixPath);
+        
+    // Add a file to an MSIX package programmatically
+    bool AddFileToMsixPackage(
+        void* packageWriter,
+        const fs::path& sourceFolder,
+        const fs::path& relativePath);
+        
+    // Create images and other assets needed for the package
+    bool CreateDefaultAssets(
+        const fs::path& sourceFolder);
 };
