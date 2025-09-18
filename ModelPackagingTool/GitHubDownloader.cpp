@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <winerror.h> // For E_FAIL
+#include <winrt/base.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Web.Http.Headers.h>
 
