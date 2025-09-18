@@ -44,6 +44,10 @@ public:
     void CancelDownloads();
 
 private:
+    // Helper function to parse JSON response and extract file paths
+    std::vector<std::wstring> ParseJsonFilesResponse(
+        const std::string& jsonStr);
+
     // Build a download URL for a file in a HuggingFace repo
     std::wstring BuildDownloadUrl(
         const std::wstring& repoOwner,

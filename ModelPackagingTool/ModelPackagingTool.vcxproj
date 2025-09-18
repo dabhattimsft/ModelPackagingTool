@@ -125,6 +125,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CertificateManager.cpp" />
     <ClCompile Include="CommandLineParser.cpp" />
     <ClCompile Include="GitHubDownloader.cpp" />
     <ClCompile Include="HuggingFaceDownloader.cpp" />
@@ -136,6 +137,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CertificateManager.h" />
     <ClInclude Include="CommandLineParser.h" />
     <ClInclude Include="GitHubDownloader.h" />
     <ClInclude Include="HuggingFaceDownloader.h" />

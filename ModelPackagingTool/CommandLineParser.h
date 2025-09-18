@@ -15,6 +15,7 @@ struct CommandLineOptions
         None,
         Package,
         DownloadAndPackage,
+        GenerateCert,
         ShowHelp
     };
     
@@ -22,6 +23,13 @@ struct CommandLineOptions
     std::wstring inputPath;         // Folder path or URI
     fs::path outputPath;            // Output MSIX path
     bool verbose = false;           // Verbose output
+    std::wstring packageName;       // Custom package name
+    std::wstring publisherName;     // Custom publisher name
+    
+    // Certificate options
+    fs::path certPath;              // Path to certificate file for signing
+    std::wstring certPassword;      // Password for certificate
+    bool shouldSign = false;        // Whether to sign the package
 };
 
 class CommandLineParser

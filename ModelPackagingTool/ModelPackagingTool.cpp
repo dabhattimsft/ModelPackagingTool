@@ -8,11 +8,13 @@
 #include <fstream>
 #include <shellapi.h>
 #include <winrt/base.h>
+#include <regex>
 #include "HuggingFaceDownloader.h"
 #include "GitHubDownloader.h"
 #include "ModelDownloader.h"
 #include "MsixPackager.h"
 #include "CommandLineParser.h"
+#include "CertificateManager.h"
 
 // Progress callback for the downloader
 void DownloadProgressCallback(const std::wstring& fileName, uint64_t bytesReceived, uint64_t totalBytes)
@@ -33,25 +35,54 @@ int ExecutePackageCommand(const CommandLineOptions& options)
     try {
         std::wcout << L"Packaging folder: " << options.inputPath << std::endl;
         
-        // Verify the input folder exists
-        fs::path inputFolder(options.inputPath);
-        if (!fs::exists(inputFolder) || !fs::is_directory(inputFolder)) {
-            std::wcerr << L"Error: Input folder does not exist or is not a directory: " << options.inputPath << std::endl;
-            return 1;
-        }
-        
         // Create the MSIX package
         MsixPackager packager;
-        bool success = packager.CreateMsixPackage(inputFolder, options.outputPath);
+        bool success = packager.CreateMsixPackage(
+            options.inputPath, 
+            options.outputPath,
+            options.packageName,
+            options.publisherName
+        );
         
-        if (success) {
-            std::wcout << L"MSIX package created successfully: " << options.outputPath.wstring() << std::endl;
-            return 0;
-        }
-        else {
+        if (!success) {
             std::wcerr << L"Error: Failed to create MSIX package" << std::endl;
             return 1;
         }
+        
+        // If signing is requested, sign the package
+        if (options.shouldSign) {
+            fs::path msixPath;
+            
+            // Determine the MSIX file path
+            if (fs::is_directory(options.outputPath) || !options.outputPath.has_extension()) {
+                // The file will be in the output directory with a name based on publisher and package
+                std::wstring cleanPackageName = packager.CleanNameForPackage(options.packageName);
+                std::wstring cleanPublisherName = packager.CleanNameForPackage(options.publisherName);
+                std::wstring msixFilename = cleanPublisherName + L"_" + cleanPackageName + L".msix";
+                msixPath = options.outputPath / msixFilename;
+            }
+            else {
+                // The file is already specified with full path
+                msixPath = options.outputPath;
+            }
+            
+            std::wcout << L"Signing MSIX package: " << msixPath.wstring() << std::endl;
+            
+            bool signSuccess = packager.SignMsixPackage(
+                msixPath,
+                options.certPath,
+                options.certPassword
+            );
+            
+            if (!signSuccess) {
+                std::wcerr << L"Error: Failed to sign MSIX package" << std::endl;
+                return 1;
+            }
+            
+            std::wcout << L"MSIX package signed successfully" << std::endl;
+        }
+        
+        return 0;
     }
     catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << std::endl;
@@ -72,12 +103,28 @@ int ExecuteDownloadAndPackageCommand(const CommandLineOptions& options)
         }
         fs::create_directories(downloadFolder);
         
-        if (options.verbose) {
-            std::wcout << L"Temporary download folder: " << downloadFolder.wstring() << std::endl;
-        }
+        // Always print the download folder, it's useful information
+        std::wcout << L"Files will be downloaded to: " << downloadFolder.wstring() << std::endl;
         
         // Initialize the downloader
         ModelDownloader downloader;
+        
+        // Parse the URI to extract repository information for naming inference
+        RepositoryInfo repoInfo = downloader.ParseUri(options.inputPath);
+        
+        // Show inference information if name or publisher not provided
+        std::wstring finalPackageName = options.packageName;
+        std::wstring finalPublisherName = options.publisherName;
+        
+        if (finalPackageName.empty()) {
+            finalPackageName = repoInfo.name;
+            std::wcout << L"Package name will be inferred from repository: " << finalPackageName << std::endl;
+        }
+        
+        if (finalPublisherName.empty()) {
+            finalPublisherName = repoInfo.owner;
+            std::wcout << L"Publisher name will be inferred from repository owner: " << finalPublisherName << std::endl;
+        }
         
         // Start the download
         auto downloadTask = downloader.DownloadModelAsync(
@@ -90,42 +137,106 @@ int ExecuteDownloadAndPackageCommand(const CommandLineOptions& options)
         downloadTask.get();
         
         std::wcout << std::endl << L"Download completed successfully!" << std::endl;
+        std::wcout << L"Downloaded files are in: " << downloadFolder.wstring() << std::endl;
         
         // Now package the downloaded files
         MsixPackager packager;
         
-        // If the output path is just a directory, create a default MSIX filename
-        fs::path outputPath = options.outputPath;
-        if (fs::is_directory(outputPath)) {
-            // Extract a name from the URI
-            std::wstring uriName = L"Model";
-            size_t lastSlash = options.inputPath.find_last_of(L"/\\");
-            if (lastSlash != std::wstring::npos && lastSlash < options.inputPath.length() - 1) {
-                uriName = options.inputPath.substr(lastSlash + 1);
-            }
-            
-            outputPath /= (uriName + L".msix");
-        }
+        bool success = packager.CreateMsixPackage(
+            downloadFolder, 
+            options.outputPath,
+            finalPackageName,
+            finalPublisherName
+        );
         
-        bool success = packager.CreateMsixPackage(downloadFolder, outputPath);
-        
-        // Clean up the temporary download folder
-        if (!options.verbose) {
-            fs::remove_all(downloadFolder);
-        }
-        
-        if (success) {
-            std::wcout << L"MSIX package created successfully: " << outputPath.wstring() << std::endl;
-            return 0;
-        }
-        else {
+        if (!success) {
             std::wcerr << L"Error: Failed to create MSIX package" << std::endl;
             return 1;
         }
+        
+        // If signing is requested, sign the package
+        if (options.shouldSign) {
+            fs::path msixPath;
+            
+            // Determine the MSIX file path
+            if (fs::is_directory(options.outputPath) || !options.outputPath.has_extension()) {
+                // The file will be in the output directory with a name based on publisher and package
+                std::wstring cleanPackageName = packager.CleanNameForPackage(finalPackageName);
+                std::wstring cleanPublisherName = packager.CleanNameForPackage(finalPublisherName);
+                std::wstring msixFilename = cleanPublisherName + L"_" + cleanPackageName + L".msix";
+                msixPath = options.outputPath / msixFilename;
+            }
+            else {
+                // The file is already specified with full path
+                msixPath = options.outputPath;
+            }
+            
+            std::wcout << L"Signing MSIX package: " << msixPath.wstring() << std::endl;
+            
+            bool signSuccess = packager.SignMsixPackage(
+                msixPath,
+                options.certPath,
+                options.certPassword
+            );
+            
+            if (!signSuccess) {
+                std::wcerr << L"Error: Failed to sign MSIX package" << std::endl;
+                return 1;
+            }
+            
+            std::wcout << L"MSIX package signed successfully" << std::endl;
+        }
+        
+        // Clean up the temporary download folder
+        if (!options.verbose) {
+            std::wcout << L"Cleaning up temporary download folder..." << std::endl;
+            fs::remove_all(downloadFolder);
+        }
+        else {
+            std::wcout << L"Temporary download folder preserved at: " << downloadFolder.wstring() << std::endl;
+        }
+        
+        return 0;
     }
     catch (const winrt::hresult_error& ex) {
         std::wcerr << L"Error: " << ex.message().c_str() << std::endl;
         return 1;
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Error: " << ex.what() << std::endl;
+        return 1;
+    }
+}
+
+// Execute the GenerateCert command
+int ExecuteGenerateCertCommand(const CommandLineOptions& options)
+{
+    try {
+        std::wcout << L"Generating self-signed certificate..." << std::endl;
+        std::wcout << L"Publisher: " << options.publisherName << std::endl;
+        std::wcout << L"Output path: " << options.outputPath.wstring() << std::endl;
+        
+        if (!options.certPassword.empty()) {
+            std::wcout << L"Using provided password for certificate" << std::endl;
+        }
+        
+        // Generate the certificate
+        CertificateManager certManager;
+        bool success = certManager.GenerateSelfSignedCertificate(
+            options.outputPath,
+            options.publisherName,
+            options.certPassword
+        );
+        
+        if (success) {
+            std::wcout << L"Certificate generated successfully at: " << options.outputPath.wstring() << std::endl;
+            std::wcout << L"You can use this certificate with the /sign option when packaging." << std::endl;
+            return 0;
+        }
+        else {
+            std::wcerr << L"Error: Failed to generate certificate" << std::endl;
+            return 1;
+        }
     }
     catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << std::endl;
@@ -149,6 +260,9 @@ int wmain(int argc, wchar_t* argv[])
                 
             case CommandLineOptions::Command::DownloadAndPackage:
                 return ExecuteDownloadAndPackageCommand(options);
+                
+            case CommandLineOptions::Command::GenerateCert:
+                return ExecuteGenerateCertCommand(options);
                 
             case CommandLineOptions::Command::ShowHelp:
             default:

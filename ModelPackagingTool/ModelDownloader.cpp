@@ -87,38 +87,37 @@ winrt::Windows::Foundation::IAsyncAction ModelDownloader::DownloadFromHuggingFac
     const fs::path& destinationFolder,
     ProgressCallback progressCallback)
 {
-    // If a specific path is provided, download just that file or folder
-    if (!repoInfo.path.empty()) {
-        // Check if the path appears to be a file (no trailing slash)
-        if (repoInfo.path.back() != L'/' && repoInfo.path.back() != L'\\') {
-            // Looks like a file path
-            fs::path filePath = destinationFolder / fs::path(repoInfo.path).filename();
-            co_await m_huggingFaceDownloader.DownloadFileAsync(
-                repoInfo.owner,
-                repoInfo.name,
-                repoInfo.branch,
-                repoInfo.path,
-                filePath,
-                progressCallback
-            );
-        }
-        else {
-            // Looks like a folder path
-            co_await m_huggingFaceDownloader.DownloadFolderAsync(
-                repoInfo.owner,
-                repoInfo.name,
-                repoInfo.branch,
-                repoInfo.path,
-                destinationFolder,
-                progressCallback
-            );
-        }
+    // Always treat the path as a folder path and use the API to list and download files
+    // Ensure the path is properly formatted for use with the HuggingFace API
+    std::wstring folderPath = repoInfo.path;
+    
+    // If no path is specified, use the root folder
+    if (folderPath.empty()) {
+        // Use the API to download files from the root of the repository
+        co_await m_huggingFaceDownloader.DownloadFolderAsync(
+            repoInfo.owner,
+            repoInfo.name,
+            repoInfo.branch,
+            L"/", // Root folder
+            destinationFolder,
+            progressCallback
+        );
     }
     else {
-        // No specific path provided, download the entire repo
-        // For HuggingFace, we would need to implement this with their API
-        // For now, throw an error
-        throw winrt::hresult_not_implemented(L"Downloading entire HuggingFace repositories is not yet supported");
+        // Add trailing slash if not present to indicate a folder
+        if (folderPath.back() != L'/' && folderPath.back() != L'\\') {
+            folderPath += L'/';
+        }
+        
+        // Download all files in the specified folder
+        co_await m_huggingFaceDownloader.DownloadFolderAsync(
+            repoInfo.owner,
+            repoInfo.name,
+            repoInfo.branch,
+            folderPath,
+            destinationFolder,
+            progressCallback
+        );
     }
 }
 
@@ -127,37 +126,35 @@ winrt::Windows::Foundation::IAsyncAction ModelDownloader::DownloadFromGitHubAsyn
     const fs::path& destinationFolder,
     ProgressCallback progressCallback)
 {
-    // If a specific path is provided, download just that file or folder
-    if (!repoInfo.path.empty()) {
-        // Check if the path appears to be a file (no trailing slash)
-        if (repoInfo.path.back() != L'/' && repoInfo.path.back() != L'\\') {
-            // Looks like a file path
-            fs::path filePath = destinationFolder / fs::path(repoInfo.path).filename();
-            co_await m_githubDownloader.DownloadFileAsync(
-                repoInfo.owner,
-                repoInfo.name,
-                repoInfo.branch,
-                repoInfo.path,
-                filePath,
-                progressCallback
-            );
-        }
-        else {
-            // Looks like a folder path
-            co_await m_githubDownloader.DownloadFolderAsync(
-                repoInfo.owner,
-                repoInfo.name,
-                repoInfo.branch,
-                repoInfo.path,
-                destinationFolder,
-                progressCallback
-            );
-        }
+    // Similar to HuggingFace, always treat the path as a folder path
+    std::wstring folderPath = repoInfo.path;
+    
+    // If no path is specified, use the root folder
+    if (folderPath.empty()) {
+        // Use the API to download files from the root of the repository
+        co_await m_githubDownloader.DownloadFolderAsync(
+            repoInfo.owner,
+            repoInfo.name,
+            repoInfo.branch,
+            L"/", // Root folder
+            destinationFolder,
+            progressCallback
+        );
     }
     else {
-        // No specific path provided, download the entire repo
-        // For GitHub, we would need to implement this with their API
-        // For now, throw an error
-        throw winrt::hresult_not_implemented(L"Downloading entire GitHub repositories is not yet supported");
+        // Add trailing slash if not present to indicate a folder
+        if (folderPath.back() != L'/' && folderPath.back() != L'\\') {
+            folderPath += L'/';
+        }
+        
+        // Download all files in the specified folder
+        co_await m_githubDownloader.DownloadFolderAsync(
+            repoInfo.owner,
+            repoInfo.name,
+            repoInfo.branch,
+            folderPath,
+            destinationFolder,
+            progressCallback
+        );
     }
 }
