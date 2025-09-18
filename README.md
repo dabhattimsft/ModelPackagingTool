@@ -1,3 +1,5 @@
+** Most of it is AI Generated so it may be inaccurate **
+
 # ModelPackagingTool
 
 A command-line utility for packaging machine learning models into MSIX packages for Windows applications.
@@ -148,5 +150,6 @@ The tool includes a PowerShell script for creating self-signed certificates:
 [License information here]
 
 ## Contributing
+
 
 Contributions are welcome! Please feel free to submit a Pull Request.
