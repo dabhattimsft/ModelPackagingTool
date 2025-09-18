@@ -9,120 +9,6 @@
 // Include WIL for RAII resource management
 #include <wil/resource.h>
 
-bool CertificateManager::GenerateSelfSignedCertificate(
-    const fs::path& outputCertPath,
-    const std::wstring& publisherName,
-    const std::wstring& password)
-{
-    // Create a safe publisher name for the certificate
-    std::wstring safePublisherName = publisherName;
-    
-    // Replace invalid characters with underscores
-    std::wregex invalidChars(L"[^a-zA-Z0-9_.-]");
-    safePublisherName = std::regex_replace(safePublisherName, invalidChars, L"_");
-    
-    // Ensure output directory exists
-    fs::path outputDir = outputCertPath.parent_path();
-    if (!outputDir.empty() && !fs::exists(outputDir)) {
-        try {
-            fs::create_directories(outputDir);
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "Error creating certificate output directory: " << ex.what() << std::endl;
-            return false;
-        }
-    }
-    
-    // Get the path to the embedded PowerShell script
-    fs::path scriptPath = fs::current_path() / L"Scripts" / L"CreateCertificate.ps1";
-    
-    // Check if the script exists
-    if (!fs::exists(scriptPath)) {
-        // Try to find the script relative to the executable
-        WCHAR exePath[MAX_PATH];
-        GetModuleFileNameW(NULL, exePath, MAX_PATH);
-        fs::path exeDir = fs::path(exePath).parent_path();
-        
-        // Look in various potential locations
-        std::vector<fs::path> potentialPaths = {
-            exeDir / L"Scripts" / L"CreateCertificate.ps1",
-            exeDir / L"CreateCertificate.ps1",
-            exeDir.parent_path() / L"Scripts" / L"CreateCertificate.ps1",
-            exeDir.parent_path() / L"ModelPackagingTool" / L"Scripts" / L"CreateCertificate.ps1"
-        };
-        
-        for (const auto& path : potentialPaths) {
-            if (fs::exists(path)) {
-                scriptPath = path;
-                break;
-            }
-        }
-        
-        if (!fs::exists(scriptPath)) {
-            std::wcerr << L"Error: CreateCertificate.ps1 script not found" << std::endl;
-            return false;
-        }
-    }
-    
-    std::wcout << L"Using certificate script: " << scriptPath.wstring() << std::endl;
-    
-    // Create the PowerShell command to execute the script with parameters
-    std::wstringstream cmdBuilder;
-    cmdBuilder << L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" 
-              << scriptPath.wstring() << L"\" "
-              << L"-PublisherName \"" << safePublisherName << L"\" "
-              << L"-CertificatePath \"" << outputCertPath.wstring() << L"\" ";
-    
-    // Add password parameter if provided
-    if (!password.empty()) {
-        cmdBuilder << L"-Password \"" << password << L"\" ";
-    }
-    
-    std::wstring powershellCmd = cmdBuilder.str();
-    
-    std::wcout << L"Generating self-signed certificate..." << std::endl;
-    
-    // Execute the command using WIL's RAII wrappers
-    STARTUPINFOW si = { sizeof(si) };
-    PROCESS_INFORMATION pi = { 0 };
-    
-    // Use wil::unique_process_information to handle PROCESS_INFORMATION cleanup
-    wil::unique_process_information processInfo;
-    
-    // Use wil::make_cotaskmem_string for command line management
-    auto cmdLine = wil::make_cotaskmem_string(powershellCmd.c_str());
-    if (!cmdLine) {
-        std::wcerr << L"Failed to allocate memory for command line" << std::endl;
-        return false;
-    }
-    
-    if (!CreateProcessW(NULL, cmdLine.get(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &processInfo)) {
-        std::wcerr << L"Failed to execute PowerShell, error code: " << GetLastError() << std::endl;
-        return false;
-    }
-    
-    // Wait for the process to complete
-    WaitForSingleObject(processInfo.hProcess, INFINITE);
-    
-    // Get the exit code
-    DWORD exitCode = 0;
-    GetExitCodeProcess(processInfo.hProcess, &exitCode);
-    
-    if (exitCode != 0) {
-        std::wcerr << L"PowerShell failed with exit code: " << exitCode << std::endl;
-        return false;
-    }
-    
-    if (fs::exists(outputCertPath)) {
-        std::wcout << L"Certificate created successfully at: " << outputCertPath.wstring() << std::endl;
-        return true;
-    }
-    else {
-        std::wcerr << L"Certificate creation failed: File not found at " << outputCertPath.wstring() << std::endl;
-        return false;
-    }
-}
-
 bool CertificateManager::SignPackage(
     const fs::path& msixPath,
     const fs::path& certPath,
@@ -189,11 +75,14 @@ bool CertificateManager::SignPackage(
 
 fs::path CertificateManager::FindSignToolPath()
 {
-    // Try to locate Windows SDK bin path from registry
+    // Try to locate Windows SDK bin path from registry using WIL's unique_hkey
     wil::unique_hkey regKey;
-    LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                              L"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
-                              0, KEY_READ, &regKey);
+    LSTATUS result = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
+        0,
+        KEY_READ,
+        &regKey);
     
     if (result != ERROR_SUCCESS) {
         std::wcerr << L"Failed to open Windows Kits registry key, error: " << result << std::endl;
@@ -205,8 +94,13 @@ fs::path CertificateManager::FindSignToolPath()
     DWORD bufferSize = sizeof(sdkPath);
     DWORD dataType;
     
-    result = RegQueryValueExW(regKey.get(), L"KitsRoot10", NULL, &dataType,
-                           reinterpret_cast<LPBYTE>(sdkPath), &bufferSize);
+    result = RegQueryValueExW(
+        regKey.get(),
+        L"KitsRoot10",
+        NULL,
+        &dataType,
+        reinterpret_cast<LPBYTE>(sdkPath),
+        &bufferSize);
     
     if (result != ERROR_SUCCESS || dataType != REG_SZ) {
         std::wcerr << L"Failed to read KitsRoot10 registry value, error: " << result << std::endl;

@@ -11,12 +11,6 @@ public:
     CertificateManager() = default;
     ~CertificateManager() = default;
 
-    // Generate a self-signed certificate for testing
-    bool GenerateSelfSignedCertificate(
-        const fs::path& outputCertPath,
-        const std::wstring& publisherName,
-        const std::wstring& password = L"");
-
     // Sign an MSIX package with a certificate
     bool SignPackage(
         const fs::path& msixPath,

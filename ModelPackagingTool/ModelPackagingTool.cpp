@@ -29,6 +29,37 @@ void DownloadProgressCallback(const std::wstring& fileName, uint64_t bytesReceiv
     }
 }
 
+// Find the actual model folder in the download directory
+fs::path FindModelFolder(const fs::path& downloadFolder, const std::wstring& repoName)
+{
+    // If the repo name folder exists, use it
+    fs::path modelFolder = downloadFolder / repoName;
+    if (fs::exists(modelFolder) && fs::is_directory(modelFolder)) {
+        return modelFolder;
+    }
+    
+    // Look for a single subdirectory in the download folder
+    std::vector<fs::path> subdirs;
+    try {
+        for (const auto& entry : fs::directory_iterator(downloadFolder)) {
+            if (entry.is_directory()) {
+                subdirs.push_back(entry.path());
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Error enumerating download folder: " << ex.what() << std::endl;
+    }
+
+    // If there's exactly one subdirectory, it's likely the model folder
+    if (subdirs.size() == 1) {
+        return subdirs[0];
+    }
+    
+    // Otherwise, use the download folder itself
+    return downloadFolder;
+}
+
 // Execute the Package command
 int ExecutePackageCommand(const CommandLineOptions& options)
 {
@@ -139,11 +170,15 @@ int ExecuteDownloadAndPackageCommand(const CommandLineOptions& options)
         std::wcout << std::endl << L"Download completed successfully!" << std::endl;
         std::wcout << L"Downloaded files are in: " << downloadFolder.wstring() << std::endl;
         
+        // Find the actual model folder inside the download folder
+        fs::path modelFolder = FindModelFolder(downloadFolder, repoInfo.name);
+        std::wcout << L"Using model folder: " << modelFolder.wstring() << std::endl;
+        
         // Now package the downloaded files
         MsixPackager packager;
         
         bool success = packager.CreateMsixPackage(
-            downloadFolder, 
+            modelFolder, 
             options.outputPath,
             finalPackageName,
             finalPublisherName

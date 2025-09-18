@@ -46,9 +46,16 @@ CommandLineOptions CommandLineParser::Parse(int argc, wchar_t* argv[])
                 options.outputPath = argv[++i];
                 hasOutputDir = true;
             }
-            else if ((arg == L"/sign" || arg == L"-sign") && i + 1 < argc) {
-                options.certPath = argv[++i];
-                options.shouldSign = true;
+            else if (arg == L"/sign" || arg == L"-sign") {
+                if (i + 1 < argc) {
+                    options.certPath = argv[++i];
+                    options.shouldSign = true;
+                }
+                else {
+                    std::wcerr << L"Error: Missing certificate path after /sign option" << std::endl;
+                    options.command = CommandLineOptions::Command::ShowHelp;
+                    return options;
+                }
             }
             else if ((arg == L"/pwd" || arg == L"-pwd") && i + 1 < argc) {
                 options.certPassword = argv[++i];
@@ -134,9 +141,16 @@ CommandLineOptions CommandLineParser::Parse(int argc, wchar_t* argv[])
                 options.outputPath = argv[++i];
                 hasOutputDir = true;
             }
-            else if ((arg == L"/sign" || arg == L"-sign") && i + 1 < argc) {
-                options.certPath = argv[++i];
-                options.shouldSign = true;
+            else if (arg == L"/sign" || arg == L"-sign") {
+                if (i + 1 < argc) {
+                    options.certPath = argv[++i];
+                    options.shouldSign = true;
+                }
+                else {
+                    std::wcerr << L"Error: Missing certificate path after /sign option" << std::endl;
+                    options.command = CommandLineOptions::Command::ShowHelp;
+                    return options;
+                }
             }
             else if ((arg == L"/pwd" || arg == L"-pwd") && i + 1 < argc) {
                 options.certPassword = argv[++i];
@@ -202,20 +216,48 @@ void CommandLineParser::ShowUsage()
     std::wcout << L"  /name <n>             Specify package name (required for /pack, optional for /downloadAndPack)" << std::endl;
     std::wcout << L"  /publisher <n>        Specify publisher name (required for /pack)" << std::endl;
     std::wcout << L"  /sign <cert-path>     Sign the MSIX package with the specified certificate" << std::endl;
-    std::wcout << L"  /pwd <password>       Specify password for certificate" << std::endl;
+    std::wcout << L"  /pwd <password>       Specify password for certificate (only needed if certificate is password-protected)" << std::endl;
     std::wcout << L"  /verbose              Enable verbose output" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Examples:" << std::endl;
     std::wcout << L"  ModelPackagingTool /pack C:\\Models\\MyModel /name MyModel /publisher Contoso /o C:\\Output" << std::endl;
     std::wcout << L"  ModelPackagingTool /downloadAndPack https://huggingface.co/openai-community/gpt2/tree/main/onnx /o C:\\Output" << std::endl;
     std::wcout << L"  ModelPackagingTool /downloadAndPack https://huggingface.co/openai-community/gpt2 /o C:\\Output /name gpt2 /publisher openai-community" << std::endl;
+    std::wcout << L"  ModelPackagingTool /pack C:\\Models\\MyModel /name MyModel /publisher Contoso /o C:\\Output /sign C:\\Certs\\MyCert.pfx" << std::endl;
     std::wcout << L"  ModelPackagingTool /pack C:\\Models\\MyModel /name MyModel /publisher Contoso /o C:\\Output /sign C:\\Certs\\MyCert.pfx /pwd mypassword" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Signing Options:" << std::endl;
     std::wcout << L"  /sign <cert-file>     Specify certificate file for signing (required for signed packages)" << std::endl;
-    std::wcout << L"  /pwd <password>       Specify password for the certificate (if any)" << std::endl;
+    std::wcout << L"  /pwd <password>       Specify password for the certificate (only needed if certificate is password-protected)" << std::endl;
+    std::wcout << std::endl;
+    std::wcout << L"Creating a Certificate:" << std::endl;
+    std::wcout << L"  A PowerShell script is included to create a self-signed certificate for MSIX package signing:" << std::endl;
+    std::wcout << L"  1. From the folder containing ModelPackagingTool, run:" << std::endl;
+    std::wcout << L"     .\\Scripts\\GenerateMsixCertificate.ps1 -PublisherName \"YourName\"" << std::endl;
+    std::wcout << L"     (This will create a certificate without password in the current directory)" << std::endl;
+    std::wcout << L"  2. Or create a password-protected certificate:" << std::endl;
+    std::wcout << L"     .\\Scripts\\GenerateMsixCertificate.ps1 -PublisherName \"YourName\" -Password \"YourPassword\"" << std::endl;
+    std::wcout << L"  3. Or specify a custom path:" << std::endl;
+    std::wcout << L"     .\\Scripts\\GenerateMsixCertificate.ps1 -PublisherName \"YourName\" -CertificatePath \"C:\\path\\to\\certificate.pfx\"" << std::endl;
+    std::wcout << L"  4. The script will create a certificate and show you how to use it with ModelPackagingTool" << std::endl;
+    std::wcout << std::endl;
+    std::wcout << L"  You can also manually create a certificate with these PowerShell commands:" << std::endl;
+    std::wcout << L"  $cert = New-SelfSignedCertificate -Type Custom -Subject \"CN=YourName\" -KeyUsage DigitalSignature" << std::endl;
+    std::wcout << L"    -FriendlyName \"Your MSIX Signing Certificate\" -CertStoreLocation \"Cert:\\CurrentUser\\My\"" << std::endl;
+    std::wcout << L"    -TextExtension @(\"2.5.29.37={text}1.3.6.1.5.5.7.3.3\", \"2.5.29.19={text}\")" << std::endl;
+    std::wcout << L"  # For a certificate with password:" << std::endl;
+    std::wcout << L"  $password = ConvertTo-SecureString -String \"YourPassword\" -Force -AsPlainText" << std::endl;
+    std::wcout << L"  Export-PfxCertificate -Cert \"Cert:\\CurrentUser\\My\\$($cert.Thumbprint)\"" << std::endl;
+    std::wcout << L"    -FilePath \"C:\\path\\to\\certificate.pfx\" -Password $password" << std::endl;
+    std::wcout << L"  # For a certificate without password:" << std::endl;
+    std::wcout << L"  $emptyPassword = New-Object System.Security.SecureString" << std::endl;
+    std::wcout << L"  Export-PfxCertificate -Cert \"Cert:\\CurrentUser\\My\\$($cert.Thumbprint)\"" << std::endl;
+    std::wcout << L"    -FilePath \"C:\\path\\to\\certificate.pfx\" -Password $emptyPassword" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Note:" << std::endl;
     std::wcout << L"  - Signing is optional for /pack and /downloadAndPack commands" << std::endl;
     std::wcout << L"  - If signing is enabled, the specified certificate must be valid" << std::endl;
+    std::wcout << L"  - Only use /pwd option if your certificate is password-protected" << std::endl;
+    std::wcout << L"  - For development purposes, a self-signed certificate is sufficient" << std::endl;
+    std::wcout << L"  - For production, consider using a certificate from a trusted certificate authority" << std::endl;
 }

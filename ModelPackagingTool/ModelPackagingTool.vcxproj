@@ -136,6 +136,7 @@
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="Scripts\CreateCertificate.ps1" />
+    <None Include="Scripts\GenerateMsixCertificate.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AppxManifestTemplates.h" />
