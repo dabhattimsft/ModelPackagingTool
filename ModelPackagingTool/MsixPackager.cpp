@@ -1,5 +1,6 @@
 #include "MsixPackager.h"
 #include "CertificateManager.h"
+#include "AppxManifestTemplates.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -96,19 +97,19 @@ bool MsixPackager::CreateMsixPackage(
     
     std::wcout << L"Output MSIX path: " << finalOutputPath.wstring() << std::endl;
     
-    // Create AppxManifest.xml in the source folder
-    if (!CreateAppxManifest(sourceFolder, finalPackageName, finalPublisherName)) {
-        std::wcerr << L"Failed to create AppxManifest.xml" << std::endl;
-        return false;
+    // Check if AppxManifest.xml already exists in the source folder
+    fs::path manifestPath = sourceFolder / L"AppxManifest.xml";
+    if (!fs::exists(manifestPath)) {
+        // Create AppxManifest.xml in the source folder if it doesn't exist
+        if (!CreateAppxManifest(sourceFolder, finalPackageName, finalPublisherName)) {
+            std::wcerr << L"Failed to create AppxManifest.xml" << std::endl;
+            return false;
+        }
+    } else {
+        std::wcout << L"Using existing AppxManifest.xml found in source folder" << std::endl;
     }
     
-    // Create the Images folder and default assets
-    if (!CreateDefaultAssets(sourceFolder)) {
-        std::wcerr << L"Failed to create default assets" << std::endl;
-        return false;
-    }
-    
-    // Build the MSIX package using MakeAppx.exe from the Windows SDK
+    // Build the MSIX package using MakeAppx.exe from the Windows SDK with /nv flag
     if (!BuildMsixPackage(sourceFolder, finalOutputPath)) {
         std::wcerr << L"Failed to build MSIX package" << std::endl;
         return false;
@@ -126,51 +127,14 @@ bool MsixPackager::CreateAppxManifest(
     // Create the AppxManifest.xml file
     fs::path manifestPath = sourceFolder / L"AppxManifest.xml";
     
-    // Create XML content
-    std::wostringstream manifestContent;
-    manifestContent << L"<?xml version=\"1.0\" encoding=\"utf-8\"?>" << std::endl;
-    manifestContent << L"<Package" << std::endl;
-    manifestContent << L"  xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\"" << std::endl;
-    manifestContent << L"  xmlns:uap=\"http://schemas.microsoft.com/appx/manifest/uap/windows10\"" << std::endl;
-    manifestContent << L"  IgnorableNamespaces=\"uap\">" << std::endl;
-    manifestContent << L"" << std::endl;
-    manifestContent << L"  <Identity" << std::endl;
-    
     // Clean package name to be valid for MSIX
     std::wstring cleanPackageName = CleanNameForPackage(packageName);
     std::wstring cleanPublisherName = CleanNameForPackage(publisherName);
     
-    manifestContent << L"    Name=\"" << cleanPackageName << L"ModelPackage\"" << std::endl;
-    manifestContent << L"    Publisher=\"CN=" << cleanPublisherName << L"\"" << std::endl;
-    manifestContent << L"    Version=\"1.0.0.0\" />" << std::endl;
-    manifestContent << L"" << std::endl;
-    manifestContent << L"  <Properties>" << std::endl;
-    manifestContent << L"    <DisplayName>" << cleanPackageName << L" Model Package</DisplayName>" << std::endl;
-    manifestContent << L"    <PublisherDisplayName>" << cleanPublisherName << L"</PublisherDisplayName>" << std::endl;
-    manifestContent << L"    <Logo>Images\\StoreLogo.png</Logo>" << std::endl;
-    manifestContent << L"  </Properties>" << std::endl;
-    manifestContent << L"" << std::endl;
-    manifestContent << L"  <Dependencies>" << std::endl;
-    manifestContent << L"    <TargetDeviceFamily Name=\"Windows.Desktop\" MinVersion=\"10.0.17763.0\" MaxVersionTested=\"10.0.22621.0\" />" << std::endl;
-    manifestContent << L"  </Dependencies>" << std::endl;
-    manifestContent << L"" << std::endl;
-    manifestContent << L"  <Resources>" << std::endl;
-    manifestContent << L"    <Resource Language=\"en-us\" />" << std::endl;
-    manifestContent << L"  </Resources>" << std::endl;
-    manifestContent << L"" << std::endl;
-    manifestContent << L"  <Applications>" << std::endl;
-    manifestContent << L"    <Application Id=\"App\">" << std::endl;
-    manifestContent << L"      <uap:VisualElements" << std::endl;
-    manifestContent << L"        DisplayName=\"" << cleanPackageName << L" Model Package\"" << std::endl;
-    manifestContent << L"        Description=\"" << cleanPackageName << L" Model Package\"" << std::endl;
-    manifestContent << L"        BackgroundColor=\"transparent\"" << std::endl;
-    manifestContent << L"        Square150x150Logo=\"Images\\MedTile.png\"" << std::endl;
-    manifestContent << L"        Square44x44Logo=\"Images\\AppList.png\"" << std::endl;
-    manifestContent << L"        AppListEntry=\"none\">" << std::endl;
-    manifestContent << L"      </uap:VisualElements>" << std::endl;
-    manifestContent << L"    </Application>" << std::endl;
-    manifestContent << L"  </Applications>" << std::endl;
-    manifestContent << L"</Package>" << std::endl;
+    // Get the manifest content from the template
+    std::wstring manifestContent = AppxManifestTemplates::GetStandardManifestTemplate(
+        cleanPackageName, 
+        cleanPublisherName);
     
     // Write to file
     try {
@@ -180,7 +144,7 @@ bool MsixPackager::CreateAppxManifest(
             return false;
         }
         
-        manifestFile << manifestContent.str();
+        manifestFile << manifestContent;
         manifestFile.close();
         
         std::wcout << L"Created AppxManifest.xml in " << manifestPath.wstring() << std::endl;
@@ -190,55 +154,6 @@ bool MsixPackager::CreateAppxManifest(
         std::cerr << "Error writing manifest file: " << ex.what() << std::endl;
         return false;
     }
-}
-
-bool MsixPackager::CreateDefaultAssets(const fs::path& sourceFolder)
-{
-    // Create the Images folder
-    fs::path imagesFolder = sourceFolder / L"Images";
-    if (!fs::exists(imagesFolder)) {
-        try {
-            fs::create_directories(imagesFolder);
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "Error creating Images folder: " << ex.what() << std::endl;
-            return false;
-        }
-    }
-    
-    // Create simple placeholder images
-    // These would ideally be actual images, but for simplicity we'll just create empty files
-    std::vector<std::wstring> imageFiles = {
-        L"AppList.png",     // 44x44
-        L"MedTile.png",     // 150x150
-        L"StoreLogo.png"    // 50x50
-    };
-    
-    for (const auto& imageFile : imageFiles) {
-        fs::path imagePath = imagesFolder / imageFile;
-        
-        // Skip if already exists
-        if (fs::exists(imagePath)) {
-            continue;
-        }
-        
-        try {
-            // Create an empty file (this is just a placeholder)
-            std::ofstream img(imagePath.string(), std::ios::binary);
-            if (!img.is_open()) {
-                std::wcerr << L"Failed to create image file: " << imagePath.wstring() << std::endl;
-                return false;
-            }
-            img.close();
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "Error creating image file: " << ex.what() << std::endl;
-            return false;
-        }
-    }
-    
-    std::wcout << L"Created default assets in " << imagesFolder.wstring() << std::endl;
-    return true;
 }
 
 bool MsixPackager::BuildMsixPackage(
@@ -270,10 +185,10 @@ bool MsixPackager::BuildMsixPackage(
         return CreateZipBasedPackage(sourceFolder, outputMsixPath);
     }
     
-    // Build the command line
+    // Build the command line with /nv flag to skip validation of assets
     std::wstring cmdLine = L"\"" + makeAppxPath.wstring() + L"\" pack /d \"" + 
                           sourceFolder.wstring() + L"\" /p \"" + 
-                          outputMsixPath.wstring() + L"\" /o";
+                          outputMsixPath.wstring() + L"\" /o /nv";
     
     std::wcout << L"Executing: " << cmdLine << std::endl;
     

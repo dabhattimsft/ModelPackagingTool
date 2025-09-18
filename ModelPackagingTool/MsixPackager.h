@@ -28,14 +28,11 @@ public:
     std::wstring CleanNameForPackage(const std::wstring& name);
 
 private:
-    // Create the AppxManifest.xml file
+    // Create the AppxManifest.xml file if it doesn't exist
     bool CreateAppxManifest(
         const fs::path& sourceFolder,
         const std::wstring& packageName,
         const std::wstring& publisherName);
-    
-    // Create default image assets
-    bool CreateDefaultAssets(const fs::path& sourceFolder);
     
     // Build the MSIX package using MakeAppx.exe
     bool BuildMsixPackage(
