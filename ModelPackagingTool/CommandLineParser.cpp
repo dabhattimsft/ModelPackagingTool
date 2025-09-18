@@ -173,43 +173,6 @@ CommandLineOptions CommandLineParser::Parse(int argc, wchar_t* argv[])
             return options;
         }
     }
-    else if (command == L"/generateCert") {
-        options.command = CommandLineOptions::Command::GenerateCert;
-        
-        // Check if we have the required output path
-        if (argc < 3) {
-            std::wcerr << L"Error: Missing output certificate path" << std::endl;
-            options.command = CommandLineOptions::Command::ShowHelp;
-            return options;
-        }
-        
-        options.outputPath = argv[2];
-        
-        // Parse all arguments
-        for (int i = 3; i < argc; i++) {
-            std::wstring arg = argv[i];
-            
-            if ((arg == L"/publisher" || arg == L"-publisher") && i + 1 < argc) {
-                options.publisherName = argv[++i];
-            }
-            else if ((arg == L"/pwd" || arg == L"-pwd") && i + 1 < argc) {
-                options.certPassword = argv[++i];
-            }
-            else if (arg == L"/verbose" || arg == L"-verbose") {
-                options.verbose = true;
-            }
-            else if (arg.substr(0, 1) == L"/" || arg.substr(0, 1) == L"-") {
-                std::wcerr << L"Error: Unknown option: " << arg << std::endl;
-            }
-        }
-        
-        // Publisher name is required for certificate generation
-        if (options.publisherName.empty()) {
-            std::wcerr << L"Error: Missing required option /publisher for /generateCert command" << std::endl;
-            options.command = CommandLineOptions::Command::ShowHelp;
-            return options;
-        }
-    }
     else if (command == L"/help" || command == L"-help" || command == L"/?" || command == L"-?") {
         options.command = CommandLineOptions::Command::ShowHelp;
     }
@@ -225,21 +188,19 @@ void CommandLineParser::ShowUsage()
 {
     std::wcout << L"ModelPackagingTool - Tool for packaging model files into MSIX packages" << std::endl;
     std::wcout << L"Usage:" << std::endl;
-    std::wcout << L"  ModelPackagingTool /pack <path-to-folder> /name <name> /publisher <publisher> /o <output-dir> [/sign <cert-path>]" << std::endl;
-    std::wcout << L"  ModelPackagingTool /downloadAndPack <uri> /o <output-dir> [/name <name>] [/publisher <publisher>] [/sign <cert-path>]" << std::endl;
-    std::wcout << L"  ModelPackagingTool /generateCert <cert-output-path> /publisher <publisher> [/pwd <password>]" << std::endl;
+    std::wcout << L"  ModelPackagingTool /pack <path-to-folder> /name <n> /publisher <publisher> /o <output-dir> [/sign <cert-path>]" << std::endl;
+    std::wcout << L"  ModelPackagingTool /downloadAndPack <uri> /o <output-dir> [/name <n>] [/publisher <publisher>] [/sign <cert-path>]" << std::endl;
     std::wcout << L"  ModelPackagingTool /help" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Commands:" << std::endl;
     std::wcout << L"  /pack                 Package a local folder into an MSIX package" << std::endl;
     std::wcout << L"  /downloadAndPack      Download model files from a URI and package them" << std::endl;
-    std::wcout << L"  /generateCert         Generate a self-signed certificate for MSIX signing" << std::endl;
     std::wcout << L"  /help                 Show this help information" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Options:" << std::endl;
     std::wcout << L"  /o <dir>              Specify output directory (required for all package commands)" << std::endl;
-    std::wcout << L"  /name <name>          Specify package name (required for /pack, optional for /downloadAndPack)" << std::endl;
-    std::wcout << L"  /publisher <name>     Specify publisher name (required for /pack and /generateCert)" << std::endl;
+    std::wcout << L"  /name <n>             Specify package name (required for /pack, optional for /downloadAndPack)" << std::endl;
+    std::wcout << L"  /publisher <n>        Specify publisher name (required for /pack)" << std::endl;
     std::wcout << L"  /sign <cert-path>     Sign the MSIX package with the specified certificate" << std::endl;
     std::wcout << L"  /pwd <password>       Specify password for certificate" << std::endl;
     std::wcout << L"  /verbose              Enable verbose output" << std::endl;
@@ -248,18 +209,13 @@ void CommandLineParser::ShowUsage()
     std::wcout << L"  ModelPackagingTool /pack C:\\Models\\MyModel /name MyModel /publisher Contoso /o C:\\Output" << std::endl;
     std::wcout << L"  ModelPackagingTool /downloadAndPack https://huggingface.co/openai-community/gpt2/tree/main/onnx /o C:\\Output" << std::endl;
     std::wcout << L"  ModelPackagingTool /downloadAndPack https://huggingface.co/openai-community/gpt2 /o C:\\Output /name gpt2 /publisher openai-community" << std::endl;
-    std::wcout << L"  ModelPackagingTool /generateCert C:\\Certs\\MyCert.pfx /publisher \"Contoso Ltd\"" << std::endl;
     std::wcout << L"  ModelPackagingTool /pack C:\\Models\\MyModel /name MyModel /publisher Contoso /o C:\\Output /sign C:\\Certs\\MyCert.pfx /pwd mypassword" << std::endl;
     std::wcout << std::endl;
     std::wcout << L"Signing Options:" << std::endl;
     std::wcout << L"  /sign <cert-file>     Specify certificate file for signing (required for signed packages)" << std::endl;
     std::wcout << L"  /pwd <password>       Specify password for the certificate (if any)" << std::endl;
     std::wcout << std::endl;
-    std::wcout << L"Certificate Generation:" << std::endl;
-    std::wcout << L"  /generateCert <path>  Generate a certificate and save to the specified path" << std::endl;
-    std::wcout << std::endl;
     std::wcout << L"Note:" << std::endl;
     std::wcout << L"  - Signing is optional for /pack and /downloadAndPack commands" << std::endl;
     std::wcout << L"  - If signing is enabled, the specified certificate must be valid" << std::endl;
-    std::wcout << L"  - For self-signed certificates, you can use the /generateCert option to create one" << std::endl;
 }

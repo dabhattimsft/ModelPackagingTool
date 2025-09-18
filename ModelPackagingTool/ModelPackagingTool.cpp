@@ -208,42 +208,6 @@ int ExecuteDownloadAndPackageCommand(const CommandLineOptions& options)
     }
 }
 
-// Execute the GenerateCert command
-int ExecuteGenerateCertCommand(const CommandLineOptions& options)
-{
-    try {
-        std::wcout << L"Generating self-signed certificate..." << std::endl;
-        std::wcout << L"Publisher: " << options.publisherName << std::endl;
-        std::wcout << L"Output path: " << options.outputPath.wstring() << std::endl;
-        
-        if (!options.certPassword.empty()) {
-            std::wcout << L"Using provided password for certificate" << std::endl;
-        }
-        
-        // Generate the certificate
-        CertificateManager certManager;
-        bool success = certManager.GenerateSelfSignedCertificate(
-            options.outputPath,
-            options.publisherName,
-            options.certPassword
-        );
-        
-        if (success) {
-            std::wcout << L"Certificate generated successfully at: " << options.outputPath.wstring() << std::endl;
-            std::wcout << L"You can use this certificate with the /sign option when packaging." << std::endl;
-            return 0;
-        }
-        else {
-            std::wcerr << L"Error: Failed to generate certificate" << std::endl;
-            return 1;
-        }
-    }
-    catch (const std::exception& ex) {
-        std::cerr << "Error: " << ex.what() << std::endl;
-        return 1;
-    }
-}
-
 int wmain(int argc, wchar_t* argv[])
 {
     try {
@@ -260,9 +224,6 @@ int wmain(int argc, wchar_t* argv[])
                 
             case CommandLineOptions::Command::DownloadAndPackage:
                 return ExecuteDownloadAndPackageCommand(options);
-                
-            case CommandLineOptions::Command::GenerateCert:
-                return ExecuteGenerateCertCommand(options);
                 
             case CommandLineOptions::Command::ShowHelp:
             default:

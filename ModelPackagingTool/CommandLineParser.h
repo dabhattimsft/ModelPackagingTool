@@ -15,7 +15,6 @@ struct CommandLineOptions
         None,
         Package,
         DownloadAndPackage,
-        GenerateCert,
         ShowHelp
     };
     
